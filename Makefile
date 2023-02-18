@@ -1,7 +1,7 @@
 install:
 		npm ci
 page-loader:	
-		make 
+		bin/page-loader.js
 test:
 		npm test
 lint:
