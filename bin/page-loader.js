@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
-import pageLoader from '../src/index.js';
+import main from '../src/main.js';
 
 program
   .name('page-loader')
   .description('Loader utility')
   .version('1.0.0')
   .argument('<url>', 'url page for loader')
-  .option('-o, --output <dir>', 'output dir', '/home/user/current-dir')
-  .action((url, dir) => {
-    pageLoader(url, dir);
+  .option('-o, --output <dir>', 'output dir', process.cwd())
+  .action((url) => {
+    main(url, program.opts().output);
   });
 
 program.parse(process.argv);

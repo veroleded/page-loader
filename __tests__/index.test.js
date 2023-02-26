@@ -1,42 +1,92 @@
 import fs from 'fs/promises';
-// import { fileURLToPath } from 'url';
 import path from 'path';
-import os from 'node:os';
+import { tmpdir } from 'os';
 import nock from 'nock';
-import pageLoader from '../src/index.js';
+import PageLoader from '../src/page-loader.js';
 
 nock.disableNetConnect();
 
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = dirname(__filename);
-
-// const getFixturePath = (fileName) => path.join(__dirname, '..', '__fixtures__', fileName);
-// const getFileData = (fileName) => fs.readFile(getFixturePath(fileName), 'utf-8');
 let tmpPath = '';
-const data = 'asdasdas';
+let data;
+let changeData;
+let imageData;
+let testedData;
+let dirForSavingTestedResources;
+
+beforeAll(async () => {
+  data = await fs.readFile('/Users/veroled/projects/pageLoader/__fixtures__/beforeLoadPictures.html', 'utf-8');
+  changeData = await fs.readFile('/Users/veroled/projects/pageLoader/__fixtures__/afterLoadPictures.html', 'utf-8');
+  imageData = await fs.readFile('/Users/veroled/projects/pageLoader/__fixtures__/image.png', 'utf-8');
+});
+
 beforeEach(async () => {
-  tmpPath = await fs.mkdtemp(path.join(os.tmpdir(), 'page-loader-'));
-  console.log({ tmpPath });
-});
-
-test('is file exist?', async () => {
-  nock(/ru\.hexlet\.io/)
-    .get(/\/courses/)
-    .reply(200, data);
-  await pageLoader('https://ru.hexlet.io/courses', tmpPath);
-  const actual = await fs.access(path.resolve(tmpPath, 'ru-hexlet-io-courses.html'));
-  expect(actual).toBe(undefined);
-});
-
-test('data is correct', async () => {
-  nock(/ru\.hexlet\.io/)
-    .get(/\/courses/)
-    .reply(200, data);
-  await pageLoader('https://ru.hexlet.io/courses', tmpPath);
-  const actual = await fs.readFile(path.resolve(tmpPath, 'ru-hexlet-io-courses.html'), 'utf-8');
-  expect(actual).toBe(data);
+  tmpPath = await fs.mkdtemp(path.join(tmpdir(), 'page-loader-'));
+  testedData = new PageLoader('https://ru.hexlet.io/courses', tmpPath);
+  dirForSavingTestedResources = `${tmpPath}/ru-hexlet-io-courses_files`;
 });
 
 afterEach(async () => {
   await fs.rm(tmpPath, { recursive: true });
+});
+
+test('getHtml', async () => {
+  nock(/ru\.hexlet\.io/)
+    .get(/\/courses/)
+    .reply(200, data);
+  const actual = await testedData.getHtml();
+  expect(actual).toBe(data);
+});
+
+test('getImageLinks', async () => {
+  nock(/ru\.hexlet\.io/)
+    .get(/\/courses/)
+    .reply(200, data);
+  const actual = await testedData.getImageLinks();
+  const expected = ['/assets/professions/nodejs.png', '/assets/professions/nodejs2.png'];
+  expect(actual).toEqual(expected);
+});
+
+test('mkDirForSavingResources', async () => {
+  nock(/ru\.hexlet\.io/)
+    .get(/\/courses/)
+    .reply(200, data);
+  const actual1 = await testedData.mkDirForSavingResources();
+  const actual2 = await fs.access(dirForSavingTestedResources);
+  expect(actual1).toBe(dirForSavingTestedResources);
+  expect(actual2).toBe(undefined);
+});
+
+test('saveImage', async () => {
+  nock(/ru\.hexlet\.io/)
+    .get(/\/courses/)
+    .times(2)
+    .reply(200, data);
+  nock(/localhost:80/)
+    .get(/\/assets\/professions\/nodejs\.png/)
+    .reply(200, imageData)
+    .get(/\/assets\/professions\/nodejs2\.png/)
+    .reply(200, imageData);
+  await testedData.saveImage();
+  const actual1 = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-assets-professions-nodejs.png`, 'utf-8');
+  const actual2 = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-assets-professions-nodejs2.png`, 'utf-8');
+  expect(actual1).toBe(imageData);
+  expect(actual2).toBe(imageData);
+});
+
+test('Is the correct page with the changed links preserved?', async () => {
+  nock(/ru\.hexlet\.io/)
+    .get(/\/courses/)
+    .times(2)
+    .reply(200, data);
+  nock(/localhost:80/)
+    .get(/\/assets\/professions\/nodejs\.png/)
+    .reply(200, imageData)
+    .get(/\/assets\/professions\/nodejs2\.png/)
+    .reply(200, imageData);
+  const filepath = path.resolve(tmpPath, 'ru-hexlet-io-courses.html');
+  await testedData.saveHtml();
+  const actual1 = await fs.access(filepath);
+  const actual2 = await fs.readFile(filepath, 'utf-8');
+  expect(actual1).toBe(undefined);
+  expect(actual2).toBe(changeData);
 });
