@@ -1,5 +1,3 @@
 /node_modules
 coverage
 .DS_Store
-/src/functionVersion
-/__tests__/testsForFunction.js

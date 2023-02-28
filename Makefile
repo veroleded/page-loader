@@ -10,4 +10,6 @@ publish:
 		npm publish --dry-run
 test-coverage:
 		npm test -- --coverage --coverageProvider=v8
+test-debug:
+		 DEBUG=nock.* npm test
 .PHONY: test
