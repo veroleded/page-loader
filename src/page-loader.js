@@ -13,18 +13,12 @@ class PageLoader {
   }
 
   getName(url, extansion) {
-    // try {
     const classUrl = new URL(url, this.url.origin);
 
     return (classUrl.href)
       .replace(`${classUrl.protocol}//`, '')
       .replace(/(\W|_)/g, '-')
       .concat(extansion);
-    // } catch (e) {
-    //   return url
-    //     .replace(/(\W|_)/g, '-')
-    //     .concat(extansion);
-    // }
   }
 
   getHtml(url = this.url) {
@@ -37,6 +31,7 @@ class PageLoader {
         })
         .catch((err) => {
           log('Data retrieval error');
+          console.log(err);
           reject(err);
         });
     });
@@ -73,7 +68,9 @@ class PageLoader {
       log('Links received');
       return onlyLocal ? [...imagelinks, ...LocalOtherLinks] : [...imagelinks, ...otherLinks];
     })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        throw err;
+      });
   }
 
   mkDirForSavingResources(dirPath = path.resolve(this.pathForSaving, this.getName(this.url.href, '_files'))) {
@@ -83,7 +80,9 @@ class PageLoader {
         log(`The directory was created as ${dirPath}`);
         return dirPath;
       })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        throw err;
+      });
   }
 
   saveResources(
@@ -91,34 +90,33 @@ class PageLoader {
     dirPath = path.resolve(this.pathForSaving, this.getName(this.url.href, '_files')),
   ) {
     const linksForResources = Promise.resolve(linksArray);
-    const pathForSaving = this.mkDirForSavingResources(dirPath);
-    const promises = [linksForResources, pathForSaving];
+    const pathDirForSaving = this.mkDirForSavingResources(dirPath);
+    const promises = [linksForResources, pathDirForSaving];
 
     return Promise.all(promises)
       .then(([resourceslinks, dirForSaving]) => Promise.all(
         resourceslinks.map((link) => {
-          const nameForSaving = dirForSaving.split('/').pop();
-          let newLink = link.split('.');
-          const extantion = newLink.pop();
-
-          if (extantion.length > 4) {
-            newLink = this.getName(newLink.concat(extantion).join('-'), '.html');
-          } else {
-            newLink = this.getName(newLink.join('-'), `.${extantion}`);
-          }
-
-          const src = `${nameForSaving}/${newLink}`;
-          const pathForImage = `${dirForSaving}/${newLink}`;
+          const extForLink = path.parse(link).ext;
+          const linkParse = path.parse(link);
+          const nameDirForSaving = path.parse(dirForSaving).name;
+          const linkParseDir = linkParse.dir === '/' ? '' : linkParse.dir;
+          const newLink = this.getName((`${linkParseDir}/${linkParse.name}`), extForLink || '.html');
+          const newAttr = `${nameDirForSaving}/${newLink}`;
+          const pathForSaving = `${dirForSaving}/${newLink}`;
           const correctLink = new URL(link, this.url.origin).href;
           return axios({
             method: 'get',
             url: correctLink,
             responseType: 'stream',
-          }).then((response) => fs.writeFile(pathForImage, response.data)).then(() => log(`${link} saved as ${pathForImage}`))
-            .then(() => [link, src])
-            .catch((err) => console.error(err));
+          }).then((response) => fs.writeFile(pathForSaving, response.data)).then(() => log(`${link} saved as ${pathForSaving}`))
+            .then(() => [link, newAttr])
+            .catch((err) => {
+              throw err;
+            });
         }),
-      )).catch((err) => console.error(err));
+      )).catch((err) => {
+        throw err;
+      });
   }
 
   saveHtml(
@@ -139,9 +137,11 @@ class PageLoader {
         return changedHtml;
       })
       .then((newHtml) => fs.writeFile(`${dirForSaving}/${name}`, newHtml).then(() => log(
-        `HTML data has been saved as ${this.pathForSaving}`,
+        `HTML data has been saved as ${this.pathForSaving}/${name}`,
       )))
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        throw err;
+      });
   }
 }
 

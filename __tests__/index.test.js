@@ -15,6 +15,12 @@ let scriptData = '';
 let applicationData = '';
 let resourcesData = [];
 let dirForSavingTestedResources = '';
+const links = [
+  '/assets/professions/nodejs.png',
+  'https://ru.hexlet.io/packs/js/runtime.js',
+  '/assets/application.css',
+  '/courses',
+];
 const oldNew = [
   ['/assets/professions/nodejs.png', 'ru-hexlet-io-courses_files/ru-hexlet-io-assets-professions-nodejs.png'],
   ['https://ru.hexlet.io/packs/js/runtime.js', 'ru-hexlet-io-courses_files/ru-hexlet-io-packs-js-runtime.js'],
@@ -40,15 +46,14 @@ beforeAll(async () => {
 beforeEach(async () => {
   tmpPath = await fs.mkdtemp(path.join(tmpdir(), 'page-loader-'));
   dirForSavingTestedResources = `${tmpPath}/ru-hexlet-io-courses_files`;
-
-  resourcesData.map(({ link, data }) => nock('https://ru.hexlet.io').persist().get(link).reply(200, data));
-  nock('https://ru.hexlet.io').get('/courses').reply(200, htmlData);
+  resourcesData.forEach(({ link, data }) => nock('https://ru.hexlet.io').persist().get(link).reply(200, data));
 });
 
 afterEach(async () => {
   await fs.rm(tmpPath, { recursive: true });
+  nock.cleanAll();
 });
-describe('Methods', () => {
+describe('No file system or http errors', () => {
   test('getHtml', async () => {
     const actual = await new PageLoader(url).getHtml(url);
     expect(actual).toBe(htmlData);
@@ -85,12 +90,7 @@ describe('Methods', () => {
   });
 
   test('saveResources', async () => {
-    await new PageLoader(url).saveResources([
-      '/assets/professions/nodejs.png',
-      'https://ru.hexlet.io/packs/js/runtime.js',
-      '/assets/application.css',
-      '/courses',
-    ], `${tmpPath}/ru-hexlet-io-courses_files`);
+    await new PageLoader(url).saveResources(links, `${tmpPath}/ru-hexlet-io-courses_files`);
     const actualImage = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-assets-professions-nodejs.png`, 'utf-8');
     const actualScript = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-packs-js-runtime.js`, 'utf-8');
     expect(actualImage).toBe(imageData);
@@ -99,7 +99,7 @@ describe('Methods', () => {
 
   test('SaveHtml', async () => {
     const filepath = path.resolve(tmpPath, 'ru-hexlet-io-courses.html');
-    await new PageLoader(url).saveHtml(htmlData, oldNew, 'ru-hexlet-io-courses.html', tmpPath);
+    await new PageLoader(url, tmpPath).saveHtml(htmlData, oldNew, 'ru-hexlet-io-courses.html', tmpPath);
     const actual1 = await fs.access(filepath);
     const actual2 = await fs.readFile(filepath, 'utf-8');
     expect(actual1).toBe(undefined);
@@ -107,16 +107,55 @@ describe('Methods', () => {
   });
 });
 
-describe('Page-loader', () => {
-  test('no errors', async () => {
-    await new PageLoader(url, tmpPath).saveHtml();
-    const filepath = path.resolve(tmpPath, 'ru-hexlet-io-courses.html');
-    const actualChangedHtml = await fs.readFile(filepath, 'utf-8');
-    const actualImage = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-assets-professions-nodejs.png`, 'utf-8');
-    const actualScript = await fs.readFile(`${dirForSavingTestedResources}/ru-hexlet-io-packs-js-runtime.js`, 'utf-8');
+describe('fs throw error', () => {
+  test('ENOENT', async () => {
+    const actual = new PageLoader(url, tmpPath).mkDirForSavingResources('/Non-existentDirectory/makingDir');
 
-    expect(actualChangedHtml).toBe(changedData);
-    expect(actualImage).toBe(imageData);
-    expect(actualScript).toBe(scriptData);
+    await expect(actual)
+      .rejects
+      .toThrow("ENOENT: no such file or directory, mkdir '/Non-existentDirectory/makingDir'");
+  });
+
+  test('EACCES', async () => {
+    const actual = new PageLoader(url).saveHtml(htmlData, oldNew, 'ru-hexlet-io-courses.html', tmpPath);
+    await fs.chmod(tmpPath, 0o400);
+
+    await expect(actual)
+      .rejects
+      .toThrow(`EACCES: permission denied, open '${tmpPath}/ru-hexlet-io-courses.html'`);
+  });
+
+  test('EEXIST', async () => {
+    await fs.mkdir(dirForSavingTestedResources);
+    const actual = new PageLoader(url).saveResources(links, dirForSavingTestedResources);
+    await expect(actual)
+      .rejects
+      .toThrow(`EEXIST: file already exists, mkdir '${dirForSavingTestedResources}'`);
+  });
+});
+
+describe('axios throw error', () => {
+  beforeEach(() => nock.cleanAll());
+
+  test.each([301, 404, 500])('networks errors, code %i', async (code) => {
+    resourcesData.forEach(({ link }) => {
+      nock('https://ru.hexlet.io')
+        .persist()
+        .get(link)
+        .reply(code, null);
+    });
+
+    const actualGetResourcesLinks = new PageLoader(url, tmpPath).getResourcesLinks();
+    const actualGetHtml = new PageLoader(url).getHtml(url);
+    const actualSaveHtml = new PageLoader(url, tmpPath).saveHtml(htmlData);
+    await expect(actualGetResourcesLinks)
+      .rejects
+      .toThrow(`Request failed with status code ${code}`);
+    await expect(actualGetHtml)
+      .rejects
+      .toThrow(`Request failed with status code ${code}`);
+    await expect(actualSaveHtml)
+      .rejects
+      .toThrow(`Request failed with status code ${code}`);
   });
 });
