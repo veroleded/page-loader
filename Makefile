@@ -1,3 +1,5 @@
+setup:
+		npm link
 install:
 		npm ci
 page-loader:	
